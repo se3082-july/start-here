@@ -1,0 +1,2 @@
+# Optional class list: one GitHub username per line.
+# Leave this file with only comments to let any GitHub user request a repo.
