@@ -1,0 +1,17 @@
+name: Get my SE3082 repo
+description: Create my private copy of the SE3082 hello-world project
+title: "Repo request"
+labels: ["repo-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Click **Create** at the bottom of this page. Within about a minute a bot will reply here with
+        a link to accept access to **your own private repository**. Only you and your instructors can see it.
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I am enrolled in SE3082 and this is my own GitHub account.
+          required: true
