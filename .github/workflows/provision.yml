@@ -104,8 +104,10 @@ jobs:
               return reject(`A repository for ${sid} already exists and belongs to another account. If this is your ID, contact the module coordinator.`);
             }
             if (!existing) {
-              await github.request('POST /repos/{owner}/{repo}/generate', {
-                owner: ORG, repo: TEMPLATE,
+              // URL params use template_owner/template_repo so that `owner`
+              // (the organisation the new repo is created in) stays in the body.
+              await github.request('POST /repos/{template_owner}/{template_repo}/generate', {
+                template_owner: ORG, template_repo: TEMPLATE, owner: ORG,
                 name, private: true, include_all_branches: false,
                 description: `SE3082 Assignment 03 - ${sid} ${marker}`,
               });
