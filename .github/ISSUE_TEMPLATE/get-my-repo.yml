@@ -1,17 +1,28 @@
-name: Get my SE3082 repo
-description: Create my private copy of the SE3082 hello-world project
+name: Get my SE3082 Assignment 03 repo
+description: Create my private Assignment 03 repository (se3082-a3-<StudentID>) from the course template
 title: "Repo request"
 labels: ["repo-request"]
 body:
   - type: markdown
     attributes:
       value: |
-        Click **Create** at the bottom of this page. Within about a minute a bot will reply here with
-        a link to accept access to **your own private repository**. Only you and your instructors can see it.
+        Enter your student ID and click **Create**. Within about a minute you will get an email
+        inviting you to **your own private repository** `se3082-a3-<StudentID>`.
+        Only you and your instructors can see it.
+
+        For privacy, this request is deleted automatically once your repository is created.
+  - type: input
+    id: student_id
+    attributes:
+      label: Student ID
+      description: Your SLIIT index number, e.g. IT24999938
+      placeholder: IT24999938
+    validations:
+      required: true
   - type: checkboxes
     id: confirm
     attributes:
       label: Confirmation
       options:
-        - label: I am enrolled in SE3082 and this is my own GitHub account.
+        - label: I am enrolled in SE3082, this is my own student ID, and this is my own GitHub account.
           required: true
