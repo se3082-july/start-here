@@ -1,2 +1,3 @@
-# Optional class list: one GitHub username per line.
-# Leave this file with only comments to let any GitHub user request a repo.
+# Not used any more.
+# To restrict requests to your class, add the class list (one student ID per line)
+# as the repository secret ALLOWED_STUDENT_IDS, so the IDs are not published here.
