@@ -1,0 +1,117 @@
+# Creates a private Assignment 03 repository for a student when they open a
+# "Repo request" issue in this repo.
+#
+# Setup (one-off, by an organisation owner):
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#     PROVISION_TOKEN      (required) fine-grained token, see README_ADMIN.md
+#     ALLOWED_STUDENT_IDS  (optional) class list, one student ID per line;
+#                          if set, IDs not on the list are rejected
+#   Settings -> Secrets and variables -> Actions -> Variables (optional)
+#     KEEP_ISSUES = true   keep requests instead of deleting them after success
+name: provision-student-repo
+
+on:
+  issues:
+    types: [opened, reopened, labeled]
+
+# Handle one request at a time so two students can never claim the same repo.
+concurrency:
+  group: provision
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'repo-request') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'retry')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          ALLOWED_STUDENT_IDS: ${{ secrets.ALLOWED_STUDENT_IDS }}
+          KEEP_ISSUES: ${{ vars.KEEP_ISSUES }}
+        with:
+          github-token: ${{ secrets.PROVISION_TOKEN }}
+          script: |
+            const ORG = 'se3082-july';
+            const TEMPLATE = 'se3082-a3-template';
+            const PREFIX = 'se3082-a3-';
+            const INSTRUCTOR_TEAM = 'instructors';
+            const ID_RE = /^IT\d{8}$/;
+
+            const issue = context.payload.issue;
+            const user = issue.user.login;
+            const here = { owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number };
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+            async function reply(body, labels = []) {
+              await github.rest.issues.createComment({ ...here, body });
+              if (labels.length) await github.rest.issues.addLabels({ ...here, labels });
+            }
+            async function reject(msg) {
+              await reply(`@${user} ${msg}\n\nFix it by editing your request, then ask your instructor to add the \`retry\` label, or contact the module coordinator.`, ['needs-instructor']);
+              core.setFailed(msg);
+            }
+
+            if (issue.user.type !== 'User') return core.info('Ignoring non-user request');
+
+            // 1. Read the student ID from the issue form.
+            const m = (issue.body || '').match(/###\s*Student ID\s*\n+([^\n]+)/i);
+            const sid = (m ? m[1] : '').trim().toUpperCase().replace(/\s+/g, '');
+            if (!ID_RE.test(sid)) return reject('I could not read a valid student ID (expected something like `IT24999938`).');
+
+            // 2. Optional class list.
+            const allowed = (process.env.ALLOWED_STUDENT_IDS || '')
+              .split(/[\s,]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+            if (allowed.length && !allowed.includes(sid)) return reject('That student ID is not on the SE3082 class list.');
+
+            const name = PREFIX + sid;
+            const url = `https://github.com/${ORG}/${name}`;
+            const marker = `[@${user}]`;
+
+            // 3. One repository per GitHub account.
+            const repos = await github.paginate(github.rest.repos.listForOrg, { org: ORG, type: 'all', per_page: 100 });
+            const mine = repos.find(r => r.name.startsWith(PREFIX) && (r.description || '').includes(marker));
+            if (mine && mine.name !== name) return reject(`Your GitHub account already has a repository (${mine.name}). Each student gets exactly one.`);
+
+            // 4. Create the repository unless it already exists.
+            const existing = repos.find(r => r.name.toLowerCase() === name.toLowerCase());
+            if (existing && !(existing.description || '').includes(marker)) {
+              return reject(`A repository for ${sid} already exists and belongs to another account. If this is your ID, contact the module coordinator.`);
+            }
+            if (!existing) {
+              await github.request('POST /repos/{owner}/{repo}/generate', {
+                owner: ORG, repo: TEMPLATE,
+                name, private: true, include_all_branches: false,
+                description: `SE3082 Assignment 03 - ${sid} ${marker}`,
+              });
+              // Wait until the new repo is ready.
+              for (let i = 0; i < 10; i++) {
+                try { await github.rest.repos.get({ owner: ORG, repo: name }); break; } catch { await sleep(3000); }
+              }
+            }
+
+            // 5. Student gets write (push) access only. Instructors get read.
+            await github.rest.repos.addCollaborator({ owner: ORG, repo: name, username: user, permission: 'push' });
+            try {
+              await github.request('PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}', {
+                org: ORG, team_slug: INSTRUCTOR_TEAM, owner: ORG, repo: name, permission: 'pull',
+              });
+            } catch (e) { core.warning(`Could not add ${INSTRUCTOR_TEAM} team: ${e.message}`); }
+
+            // 6. Tell the student, then close (and by default delete) the request.
+            await reply(
+              `@${user} your private repository is ready: ${url}\n\n` +
+              `1. Accept the invitation: ${url}/invitations\n` +
+              `2. Clone it: \`git clone ${url}.git\`\n` +
+              `3. Follow the README inside it.`, ['provisioned']);
+            await github.rest.issues.update({ ...here, state: 'closed', state_reason: 'completed' });
+
+            if ((process.env.KEEP_ISSUES || '').toLowerCase() !== 'true') {
+              await github.graphql('mutation($id: ID!) { deleteIssue(input: {issueId: $id}) { clientMutationId } }', { id: issue.node_id });
+              core.info('Request deleted for privacy');
+            }
+            core.info(`Provisioned ${name} for ${user}`);
